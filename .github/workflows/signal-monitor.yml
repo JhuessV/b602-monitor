@@ -55,7 +55,7 @@ jobs:
               if elapsed > MAX_SILENCE:
                   last_dt = datetime.fromtimestamp(last, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
                   send_email(
-                      f"⚠️ b602 — No activity for {elapsed:.0f} min",
+                      f"[ALERT] b602 — No activity for {elapsed:.0f} min",
                       f"""No activity detected for {elapsed:.0f} minutes.
 
 Last activity: {last_dt} UTC
