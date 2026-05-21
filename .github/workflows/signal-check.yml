@@ -23,7 +23,7 @@ jobs:
           from email.mime.text import MIMEText
 
           TARGET = "bc1qm7xn5vmgh9jwuyusykc4nynhtp68ynj4rru3d6"
-          ENDPOINT = f"https://mempool.space/api/address/{TARGET}/txs"
+          ENDPOINT = "https://mempool.space/api/address/" + TARGET + "/txs"
           STATE_FILE = "state.txt"
 
           BREVO_USER = os.environ["BREVO_USER"]
@@ -41,7 +41,7 @@ jobs:
                   s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
 
           def to_btc(sats):
-              return f"{sats / 100_000_000:.8f} BTC"
+              return str(round(sats / 100000000, 8)) + " BTC"
 
           last_known = ""
           if os.path.exists(STATE_FILE):
@@ -64,30 +64,31 @@ jobs:
                       if o.get("scriptpubkey_address") == TARGET
                   )
                   confirmed = latest.get("status", {}).get("confirmed", False)
-                  block = latest.get("status", {}).get("block_height", "pending")
-                  status = f"Confirmed at block {block}" if confirmed else "Pending (mempool)"
+                  block = str(latest.get("status", {}).get("block_height", "pending"))
+                  status = "Confirmed at block " + block if confirmed else "Pending (mempool)"
 
-                  send_email(
-                      f"🎯 New entry — {to_btc(received)}",
-                      f"""New transaction detected.
+                  lines = [
+                      "New transaction detected.",
+                      "",
+                      "Amount: " + to_btc(received) + " (" + str(received) + " sats)",
+                      "Status: " + status,
+                      "ID: " + latest_id,
+                      "",
+                      "Details:",
+                      "https://mempool.space/tx/" + latest_id,
+                      "",
+                      "Overview:",
+                      "https://mempool.space/address/" + TARGET,
+                  ]
+                  body = "\n".join(lines)
 
-Amount: {to_btc(received)} ({received:,} sats)
-Status: {status}
-ID: {latest_id}
-
-Details:
-https://mempool.space/tx/{latest_id}
-
-Overview:
-https://mempool.space/address/{TARGET}
-"""
-                  )
-                  print(f"NEW TX: {latest_id} — {to_btc(received)}")
+                  send_email("[ENTRY] New entry - " + to_btc(received), body)
+                  print("NEW TX: " + latest_id + " - " + to_btc(received))
 
                   with open(STATE_FILE, "w") as f:
                       f.write(latest_id)
               else:
-                  print(f"No changes — last known: {last_known[:16]}...")
+                  print("No changes - last known: " + last_known[:16] + "...")
           EOF
 
       - name: Save state
