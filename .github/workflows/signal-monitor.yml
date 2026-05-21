@@ -22,7 +22,7 @@ jobs:
 
           TARGET = "bc1qm7xn5vmgh9jwuyusykc4nynhtp68ynj4rru3d6"
           MAX_SILENCE = 20
-          ENDPOINT = f"https://solo.ckpool.org/users/{TARGET}"
+          ENDPOINT = "https://solo.ckpool.org/users/" + TARGET
 
           BREVO_USER = os.environ["BREVO_USER"]
           BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
@@ -50,27 +50,29 @@ jobs:
               now = int(time.time())
               elapsed = (now - last) / 60
 
-              print(f"Last activity: {elapsed:.1f} min ago | HR 5m: {hr5m} | HR 1h: {hr1h}")
+              print("Last activity: " + str(round(elapsed, 1)) + " min ago | HR 5m: " + str(hr5m) + " | HR 1h: " + str(hr1h))
 
               if elapsed > MAX_SILENCE:
                   last_dt = datetime.fromtimestamp(last, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-                  send_email(
-                      f"[ALERT] b602 — No activity for {elapsed:.0f} min",
-                      f"""No activity detected for {elapsed:.0f} minutes.
 
-Last activity: {last_dt} UTC
-HR 5m: {hr5m}
-HR 1h: {hr1h}
-Best: {best}
+                  lines = [
+                      "No activity detected for " + str(round(elapsed)) + " minutes.",
+                      "",
+                      "Last activity: " + last_dt + " UTC",
+                      "HR 5m: " + str(hr5m),
+                      "HR 1h: " + str(hr1h),
+                      "Best: " + str(best),
+                      "",
+                      "Remote stats: " + ENDPOINT,
+                  ]
+                  body = "\n".join(lines)
 
-Remote stats: {ENDPOINT}
-"""
-                  )
-                  print(f"ALERT SENT — {elapsed:.0f} min without activity")
+                  send_email("[ALERT] b602 - No activity for " + str(round(elapsed)) + " min", body)
+                  print("ALERT SENT - " + str(round(elapsed)) + " min without activity")
               else:
-                  print(f"OK — last activity {elapsed:.1f} min ago")
+                  print("OK - last activity " + str(round(elapsed, 1)) + " min ago")
 
           except Exception as e:
-              print(f"ERROR: {e}")
+              print("ERROR: " + str(e))
               raise
           EOF
