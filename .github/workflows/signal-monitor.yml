@@ -1,0 +1,76 @@
+name: Signal Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  signal-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run check
+        env:
+          BREVO_USER: ${{ secrets.BREVO_USER }}
+          BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          python3 << 'EOF'
+          import urllib.request, json, smtplib, time, os
+          from email.mime.text import MIMEText
+          from datetime import datetime, timezone
+
+          TARGET = "bc1qm7xn5vmgh9jwuyusykc4nynhtp68ynj4rru3d6"
+          MAX_SILENCE = 20
+          ENDPOINT = f"https://solo.ckpool.org/users/{TARGET}"
+
+          BREVO_USER = os.environ["BREVO_USER"]
+          BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
+          ALERT_EMAIL = os.environ["ALERT_EMAIL"]
+
+          def send_email(subject, body):
+              msg = MIMEText(body)
+              msg["Subject"] = subject
+              msg["From"] = BREVO_USER
+              msg["To"] = ALERT_EMAIL
+              with smtplib.SMTP("smtp-relay.brevo.com", 587) as s:
+                  s.starttls()
+                  s.login(BREVO_USER, BREVO_SMTP_KEY)
+                  s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
+
+          try:
+              req = urllib.request.Request(ENDPOINT, headers={"User-Agent": "Mozilla/5.0"})
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  data = json.loads(r.read().decode())
+
+              last = int(data.get("lastshare", 0))
+              hr5m = data.get("hashrate5m", "N/A")
+              hr1h = data.get("hashrate1hr", "N/A")
+              best = data.get("bestshare", "N/A")
+              now = int(time.time())
+              elapsed = (now - last) / 60
+
+              print(f"Last activity: {elapsed:.1f} min ago | HR 5m: {hr5m} | HR 1h: {hr1h}")
+
+              if elapsed > MAX_SILENCE:
+                  last_dt = datetime.fromtimestamp(last, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                  send_email(
+                      f"⚠️ b602 — No activity for {elapsed:.0f} min",
+                      f"""No activity detected for {elapsed:.0f} minutes.
+
+Last activity: {last_dt} UTC
+HR 5m: {hr5m}
+HR 1h: {hr1h}
+Best: {best}
+
+Remote stats: {ENDPOINT}
+"""
+                  )
+                  print(f"ALERT SENT — {elapsed:.0f} min without activity")
+              else:
+                  print(f"OK — last activity {elapsed:.1f} min ago")
+
+          except Exception as e:
+              print(f"ERROR: {e}")
+              raise
+          EOF
