@@ -1,0 +1,99 @@
+name: Signal Check
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  signal-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run check
+        env:
+          BREVO_USER: ${{ secrets.BREVO_USER }}
+          BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          python3 << 'EOF'
+          import urllib.request, json, smtplib, os
+          from email.mime.text import MIMEText
+
+          TARGET = "bc1qm7xn5vmgh9jwuyusykc4nynhtp68ynj4rru3d6"
+          ENDPOINT = f"https://mempool.space/api/address/{TARGET}/txs"
+          STATE_FILE = "state.txt"
+
+          BREVO_USER = os.environ["BREVO_USER"]
+          BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
+          ALERT_EMAIL = os.environ["ALERT_EMAIL"]
+
+          def send_email(subject, body):
+              msg = MIMEText(body)
+              msg["Subject"] = subject
+              msg["From"] = BREVO_USER
+              msg["To"] = ALERT_EMAIL
+              with smtplib.SMTP("smtp-relay.brevo.com", 587) as s:
+                  s.starttls()
+                  s.login(BREVO_USER, BREVO_SMTP_KEY)
+                  s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
+
+          def to_btc(sats):
+              return f"{sats / 100_000_000:.8f} BTC"
+
+          last_known = ""
+          if os.path.exists(STATE_FILE):
+              with open(STATE_FILE, "r") as f:
+                  last_known = f.read().strip()
+
+          req = urllib.request.Request(ENDPOINT, headers={"User-Agent": "Mozilla/5.0"})
+          with urllib.request.urlopen(req, timeout=15) as r:
+              txs = json.loads(r.read().decode())
+
+          if not txs:
+              print("No transactions found.")
+          else:
+              latest = txs[0]
+              latest_id = latest["txid"]
+
+              if latest_id != last_known:
+                  received = sum(
+                      o["value"] for o in latest["vout"]
+                      if o.get("scriptpubkey_address") == TARGET
+                  )
+                  confirmed = latest.get("status", {}).get("confirmed", False)
+                  block = latest.get("status", {}).get("block_height", "pending")
+                  status = f"Confirmed at block {block}" if confirmed else "Pending (mempool)"
+
+                  send_email(
+                      f"🎯 New entry — {to_btc(received)}",
+                      f"""New transaction detected.
+
+Amount: {to_btc(received)} ({received:,} sats)
+Status: {status}
+ID: {latest_id}
+
+Details:
+https://mempool.space/tx/{latest_id}
+
+Overview:
+https://mempool.space/address/{TARGET}
+"""
+                  )
+                  print(f"NEW TX: {latest_id} — {to_btc(received)}")
+
+                  with open(STATE_FILE, "w") as f:
+                      f.write(latest_id)
+              else:
+                  print(f"No changes — last known: {last_known[:16]}...")
+          EOF
+
+      - name: Save state
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "bot@monitor"
+          git add state.txt
+          git diff --staged --quiet || git commit -m "chore: update state"
+          git push
