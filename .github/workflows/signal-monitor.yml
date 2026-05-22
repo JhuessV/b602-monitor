@@ -13,6 +13,7 @@ jobs:
         env:
           BREVO_USER: ${{ secrets.BREVO_USER }}
           BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          BREVO_SENDER: ${{ secrets.BREVO_SENDER }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           python3 << 'EOF'
@@ -26,17 +27,18 @@ jobs:
 
           BREVO_USER = os.environ["BREVO_USER"]
           BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
+          BREVO_SENDER = os.environ["BREVO_SENDER"]
           ALERT_EMAIL = os.environ["ALERT_EMAIL"]
 
           def send_email(subject, body):
               msg = MIMEText(body)
               msg["Subject"] = subject
-              msg["From"] = BREVO_USER
+              msg["From"] = BREVO_SENDER
               msg["To"] = ALERT_EMAIL
               with smtplib.SMTP("smtp-relay.brevo.com", 587) as s:
                   s.starttls()
                   s.login(BREVO_USER, BREVO_SMTP_KEY)
-                  s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
+                  s.sendmail(BREVO_SENDER, ALERT_EMAIL, msg.as_string())
 
           try:
               req = urllib.request.Request(ENDPOINT, headers={"User-Agent": "Mozilla/5.0"})
@@ -44,33 +46,31 @@ jobs:
                   data = json.loads(r.read().decode())
 
               last = int(data.get("lastshare", 0))
-              hr5m = data.get("hashrate5m", "N/A")
-              hr1h = data.get("hashrate1hr", "N/A")
-              best = data.get("bestshare", "N/A")
+              hr5m = str(data.get("hashrate5m", "N/A"))
+              hr1h = str(data.get("hashrate1hr", "N/A"))
+              best = str(data.get("bestshare", "N/A"))
               now = int(time.time())
-              elapsed = (now - last) / 60
+              elapsed = round((now - last) / 60, 1)
 
-              print("Last activity: " + str(round(elapsed, 1)) + " min ago | HR 5m: " + str(hr5m) + " | HR 1h: " + str(hr1h))
+              print("Last activity: " + str(elapsed) + " min ago | HR 5m: " + hr5m + " | HR 1h: " + hr1h)
 
               if elapsed > MAX_SILENCE:
                   last_dt = datetime.fromtimestamp(last, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-
                   lines = [
                       "No activity detected for " + str(round(elapsed)) + " minutes.",
                       "",
                       "Last activity: " + last_dt + " UTC",
-                      "HR 5m: " + str(hr5m),
-                      "HR 1h: " + str(hr1h),
-                      "Best: " + str(best),
+                      "HR 5m: " + hr5m,
+                      "HR 1h: " + hr1h,
+                      "Best: " + best,
                       "",
                       "Remote stats: " + ENDPOINT,
                   ]
                   body = "\n".join(lines)
-
                   send_email("[ALERT] b602 - No activity for " + str(round(elapsed)) + " min", body)
                   print("ALERT SENT - " + str(round(elapsed)) + " min without activity")
               else:
-                  print("OK - last activity " + str(round(elapsed, 1)) + " min ago")
+                  print("OK - last activity " + str(elapsed) + " min ago")
 
           except Exception as e:
               print("ERROR: " + str(e))
