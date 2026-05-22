@@ -1,0 +1,86 @@
+name: Signal Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  signal-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run test
+        env:
+          BREVO_USER: ${{ secrets.BREVO_USER }}
+          BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          python3 << 'EOF'
+          import urllib.request, json, smtplib, time, os
+          from email.mime.text import MIMEText
+          from datetime import datetime, timezone
+
+          TARGET = "bc1qm7xn5vmgh9jwuyusykc4nynhtp68ynj4rru3d6"
+          ENDPOINT = "https://solo.ckpool.org/users/" + TARGET
+
+          BREVO_USER = os.environ["BREVO_USER"]
+          BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
+          ALERT_EMAIL = os.environ["ALERT_EMAIL"]
+
+          def send_email(subject, body):
+              print("Connecting to SMTP...")
+              msg = MIMEText(body)
+              msg["Subject"] = subject
+              msg["From"] = BREVO_USER
+              msg["To"] = ALERT_EMAIL
+              with smtplib.SMTP("smtp-relay.brevo.com", 587) as s:
+                  s.starttls()
+                  s.login(BREVO_USER, BREVO_SMTP_KEY)
+                  s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
+              print("Email sent successfully.")
+
+          print("Fetching pool data...")
+          req = urllib.request.Request(ENDPOINT, headers={"User-Agent": "Mozilla/5.0"})
+          with urllib.request.urlopen(req, timeout=15) as r:
+              raw = r.read().decode()
+              print("Raw response: " + raw)
+              data = json.loads(raw)
+
+          last = int(data.get("lastshare", 0))
+          hr5m = str(data.get("hashrate5m", "N/A"))
+          hr1h = str(data.get("hashrate1hr", "N/A"))
+          hr1d = str(data.get("hashrate1d", "N/A"))
+          best = str(data.get("bestshare", "N/A"))
+          shares = str(data.get("shares", "N/A"))
+          now = int(time.time())
+          elapsed = round((now - last) / 60, 1)
+          last_dt = datetime.fromtimestamp(last, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+          if elapsed > 60:
+              status = "[DOWN] No activity for " + str(elapsed) + " min"
+          elif elapsed > 20:
+              status = "[WARNING] Inactive for " + str(elapsed) + " min"
+          else:
+              status = "[OK] Active"
+
+          lines = [
+              "-- TEST REPORT --",
+              "",
+              "Status: " + status,
+              "Last activity: " + last_dt + " UTC (" + str(elapsed) + " min ago)",
+              "",
+              "HR 5m:  " + hr5m,
+              "HR 1h:  " + hr1h,
+              "HR 1d:  " + hr1d,
+              "Best:   " + best,
+              "Shares: " + shares,
+              "",
+              "Pool endpoint: " + ENDPOINT,
+              "Report time: " + datetime.fromtimestamp(now, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S') + " UTC",
+          ]
+          body = "\n".join(lines)
+
+          print("--- EMAIL BODY PREVIEW ---")
+          print(body)
+          print("--------------------------")
+
+          send_email("[TEST] b602 status report", body)
+          EOF
