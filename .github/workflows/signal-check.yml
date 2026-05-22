@@ -16,6 +16,7 @@ jobs:
         env:
           BREVO_USER: ${{ secrets.BREVO_USER }}
           BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          BREVO_SENDER: ${{ secrets.BREVO_SENDER }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           python3 << 'EOF'
@@ -28,17 +29,18 @@ jobs:
 
           BREVO_USER = os.environ["BREVO_USER"]
           BREVO_SMTP_KEY = os.environ["BREVO_SMTP_KEY"]
+          BREVO_SENDER = os.environ["BREVO_SENDER"]
           ALERT_EMAIL = os.environ["ALERT_EMAIL"]
 
           def send_email(subject, body):
               msg = MIMEText(body)
               msg["Subject"] = subject
-              msg["From"] = BREVO_USER
+              msg["From"] = BREVO_SENDER
               msg["To"] = ALERT_EMAIL
               with smtplib.SMTP("smtp-relay.brevo.com", 587) as s:
                   s.starttls()
                   s.login(BREVO_USER, BREVO_SMTP_KEY)
-                  s.sendmail(BREVO_USER, ALERT_EMAIL, msg.as_string())
+                  s.sendmail(BREVO_SENDER, ALERT_EMAIL, msg.as_string())
 
           def to_btc(sats):
               return str(round(sats / 100000000, 8)) + " BTC"
@@ -81,7 +83,6 @@ jobs:
                       "https://mempool.space/address/" + TARGET,
                   ]
                   body = "\n".join(lines)
-
                   send_email("[ENTRY] New entry - " + to_btc(received), body)
                   print("NEW TX: " + latest_id + " - " + to_btc(received))
 
