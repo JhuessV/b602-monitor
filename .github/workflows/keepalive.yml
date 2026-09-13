@@ -1,0 +1,24 @@
+name: Keepalive
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Touch heartbeat
+        run: date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/heartbeat
+
+      - name: Commit and push
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "bot@monitor"
+          git add .github/heartbeat
+          git diff --staged --quiet || git commit -m "chore: keepalive heartbeat"
+          git push
