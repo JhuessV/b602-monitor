@@ -31,7 +31,7 @@ jobs:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           day_of_month=$(date -u +%d)
-          if [ "$day_of_month" -gt 7 ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          if [ "$day_of_month" -gt 7 ]; then
             echo "Not the first Monday of the month - skipping."
             exit 0
           fi
